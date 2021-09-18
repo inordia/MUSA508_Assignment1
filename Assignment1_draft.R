@@ -25,7 +25,7 @@ mapTheme <- function(base_size = 12) {
 
 CTA_stops <- st_read("https://data.cityofchicago.org/download/4qtv-9w43/application%2Fxml") %>%
   select(-Description)%>%
-  st_transform('ESRI:102728')
+  st_transform('EPSG:26916')
 
 CTA_buffer <-  rbind(
   st_buffer(CTA_stops, 2640) %>%
