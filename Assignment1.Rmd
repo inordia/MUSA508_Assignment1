@@ -1,11 +1,20 @@
-#setup
-rm(list=ls())
+---
+title: "Assignment1"
+author: "Ran Wang"
+date: "9/22/2021"
+output: html_document
+---
 
+## Introduction
+Transit Oriented Development has become an important topic for urban planning. As Chicago, a city with a long history of transit, proposed new plans for Chicago "L" the rapid transit system, we argue it is important to first understand the relationship between transit and development. Are people willing to pay more to live near the transit in Chicago? This project explores what the differences between TOD and Non-TOD neigborhoods are and how significant these differences are to lead dicision-makers to conclude that TOD will thrive in Chicago.
+
+```{r setup, include=FALSE}
 library(tidyverse)
 library(tidycensus)
 library(sf)
 library(kableExtra)
 library(mapview)
+library(crimedata)
 
 
 
@@ -65,21 +74,21 @@ qBr <- function(df, variable, rnd) {
 
 
 q5 <- function(variable) {as.factor(ntile(variable, 5))}
+```
 
-#Chicago boundaries
+## Getting 2000 Data
 
+Because we are focusing on the influence of TOD on neighborhoods, we only use census tracts within the Chicago city boundary because other suburban tracts in Cook County might skew our analysis.
+
+```{r}
 CTA_boundary <-st_read("https://data.cityofchicago.org/api/geospatial/5jrd-6zik?method=export&format=KML") %>%
   st_transform('EPSG:26916')
 CTA_boundary_buffer <- st_union(CTA_boundary)
-
 vars00 <- c("P001001","P006002","PCT025050","PCT025009","P053001","H056001","P092001")
 tracts00 <-  
   get_decennial(geography = "tract", vars00, 
                 year=2000, state='IL', county='Cook', geometry=T) %>%  
   st_transform('EPSG:26916')
-
-
-#Convert data to the wide format, rename the variables and recreate new variables
 tracts00<- tracts00%>%spread(variable, value)%>% 
   rename (
     TotalPop = P001001,
@@ -94,14 +103,13 @@ tracts00<- tracts00%>%spread(variable, value)%>%
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
          year = "2000") %>%
   dplyr::select(-Whites,-FemaleBachelors,-MaleBachelors,-TotalPoverty,-NAME)
-View(tracts00)
-
-#Clip the boundary 
 tracts00 <- st_intersection(tracts00,CTA_boundary_buffer)
 
+```
 
-# ---- Year 2017 tracts -----
+## Getting 2017 Data
 
+```{r}
 vars17 <- c("B25026_001E","B02001_002E","B15001_050E",
             "B15001_009E","B19013_001E","B25058_001E",
             "B06012_002E")
@@ -109,15 +117,9 @@ tracts17 <-
   get_acs(geography = "tract", vars17, 
           year=2017, state='IL', county='Cook', geometry=T) %>%
   st_transform('EPSG:26916')
-#glimpse(tracts17)
-
-#Clip the boundary 
 clip17 <- 
   st_intersection(tracts17,CTA_boundary_buffer) %>%
   dplyr::select(GEOID,variable,estimate) 
-#plot(clip17)
-
-#Convert data to the wide format, rename the variables and recreate new variables
 tracts17<- 
   clip17 %>% 
   spread(variable, estimate)%>% 
@@ -133,18 +135,17 @@ tracts17<-
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
          year = "2017") %>%
   dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty)
+```
 
-#Binding
+## Binding 2000 and 2017 Data
 
+```{r}
 allTracts <- rbind(tracts00,tracts17)
-dim(tracts00)
-dim(tracts17)
-dim(allTracts)
-View(allTracts)
+```
 
-#Transit Data
+## Getting Transit Data
 
-
+```{r}
 CTA_stops <- st_read("https://data.cityofchicago.org/download/4qtv-9w43/application%2Fxml") %>%
   select(-Description)%>%
   st_transform('EPSG:26916')
@@ -161,6 +162,13 @@ CTA_buffer <-  rbind(
     st_sf() %>%
     mutate(Legend = "Unioned Buffer"))
 
+buffer <- filter(CTA_buffer, Legend=="Unioned Buffer")
+
+```
+
+The below map shows the Chicago "L" stations and the buffer area within 1/2 mile of stations.
+
+```{r}
 ggplot() +
   geom_sf(data=tracts00)+
   geom_sf(data=CTA_buffer) +
@@ -168,10 +176,12 @@ ggplot() +
   facet_wrap(~Legend) + 
   labs(caption = "CTAstops Buffer Zones") +
   mapTheme()
+```
 
-buffer <- filter(CTA_buffer, Legend=="Unioned Buffer")
 
-#TOD indicators
+## TOD Indicator
+
+```{r}
 selectCentroids <-
   st_centroid(tracts00)[buffer,] %>%
   st_drop_geometry() %>%
@@ -194,9 +204,14 @@ allTracts.group <-
       mutate(TOD = "Non-TOD")) %>%
   mutate(MedRent.inf = ifelse(year == "2000", MedRent * 1.42, MedRent)) 
 
-#TOD indicators maps
+```
 
-#Time/Space
+
+## TOD Indicator Maps
+
+The Time/Space Groups map shows the changes of TOD census tracts between 2000 and 2017. In the Chicago case, TOD census tracts stay largely the same.
+
+```{r}
 ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts17))+
   geom_sf(aes(fill = TOD)) +
@@ -205,7 +220,10 @@ ggplot(allTracts.group)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
 
-#Rent
+```
+
+The Median Rent map shows the changes of median rent in census tracts between 2000 and 2017. TOD census tracts within the red border generally experienced a rise in median rent.
+```{r}
 ggplot() +
   geom_sf(data = st_union(tracts17)) +
   geom_sf(data = allTracts.group, aes(fill=q5(MedRent.inf)))+
@@ -217,7 +235,10 @@ ggplot() +
   labs(title = "Chicago 2000-2017 Mediant Rent", subtitle = "Real Dollars. The red border indicates areas within 1/2 mile to transit stations. ") +
   mapTheme() + theme(plot.title = element_text(size=22))
 
-#White
+```
+
+The Percentage of White map shows the changes of the percentage of white population between 2000 and 2017. TOD census tracts in the North city had significant increase in the percentage of white population, and tracts in the South shared the same trend but in a smaller scale.
+```{r}
 ggplot() +
   geom_sf(data = st_union(tracts17)) +
   geom_sf(data = allTracts.group, aes(fill=q5(pctWhite)))+
@@ -228,35 +249,43 @@ ggplot() +
   geom_sf(data = buffer, colour = "red", fill = "transparent")+
   labs(title = "Chicago 2000-2017 Percentage of WHite", subtitle = "The red border indicates areas within 1/2 mile to transit stations. ") +
   mapTheme() + theme(plot.title = element_text(size=22))
+```
 
-#Bachelor Degrees
+The Percentage of People w/ Bachelor Degree map shows the changes of the population with Bachelor Degrees between 2000 and 2017. The change in TOD census tracts are not significantly visible from the map.
+```{r}
 ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts00))+
   geom_sf(data = st_union(tracts17))+
   geom_sf(aes(fill = q5(pctBachelors)))  +
   scale_fill_manual(values = palette5,
-                    labels = qBr(allTracts.group, "pctBachelors"),
+                    labels = qBr(allTracts.group, "pctBachelors", rnd=FALSE),
                     name = "Percent of Bachelors\n(Quintile Breaks)") +
   facet_wrap(~year)+
   geom_sf(data = buffer, fill = "transparent", color = "red")+
-  labs(title = "Percent of Bachelor Degrees 2000-2017", subtitle = "The red border indicates areas within 1/2 mile to transit stations. ") +
+  labs(title = "Percent of people wi/ Bachelor Degree 2000-2017", subtitle = "The red border indicates areas within 1/2 mile to transit stations. ") +
   mapTheme() + theme(plot.title = element_text(size=22))
+```
 
-#Poverty
+The Percentage of Poverty map shows the change of the percentage of people below the poverty line between 2000 and 2017. There is a notable decline of population in poverty in the North city as a general trend regardless of TOD status, while changes in the South city is more fuzzy.
+```{r}
 ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts00))+
   geom_sf(data = st_union(tracts17))+
   geom_sf(aes(fill = q5(pctPoverty)))  +
   scale_fill_manual(values = palette5,
-                    labels = qBr(allTracts.group, "pctPoverty"),
+                    labels = qBr(allTracts.group, "pctPoverty", rnd=FALSE),
                     name = "Percent of Poverty\n(Quintile Breaks)") +
   facet_wrap(~year)+
   geom_sf(data = buffer, fill = "transparent", color = "red")+
   labs(title = "Percent of Poverty 2000-2017", subtitle = "The red border indicates areas within 1/2 mile to transit stations. ") +
   mapTheme() + theme(plot.title = element_text(size=22))
+```
 
-#TOD Indicators Table
+## TOD Indicator Table
 
+The table below demonstrates the average of TOD indicators for TOD and Non-TOD tracts in 2000 and 2017. The most notable change is the increase of median rent as the rent gap between TOD and Non-TOD widened significantly, a change that is more straightforward in the plot. The gap of percentage of white between TOD and Non-TOD tracts also widened. While both TOD and Non-TOD tracts lost population, Non-TOD tracts lost more residents on average.
+
+```{r}
 allTracts.Summary <- 
   st_drop_geometry(allTracts.group) %>%
   group_by(year, TOD) %>%
@@ -276,8 +305,6 @@ allTracts.Summary %>%
   footnote(general_title = "TOD Inditators, Chicago",
            general = "\n")
 
-#TOD Indicators Plots
-
 allTracts.Summary %>%
   gather(Variable, Value, -year, -TOD) %>%
   ggplot(aes(year, Value, fill = TOD)) +
@@ -287,25 +314,16 @@ allTracts.Summary %>%
   labs(title = "Indicator differences across time and space") +
   plotTheme() + theme(legend.position="bottom")
 
-#sub-markets
+```
 
-Loop <- c (17031320100,	
-           17031320200,
-           17031320300,
-           17031320400,	
-           17031320500,	
-           17031320600)
+## Graduted Symbol Maps
 
-Downtown <- subset(allTracts.group, allTracts$GEOID==Loop)%>%
-  mutate(submarket = "downtown")
-
-#Graduated Symbol Maps
-
+The graduated symbol map of population below shows the change of population in census tracts within 1/2 mile of transit stations between 2000 and 2017. The TOD tracts in the center city area experienced population growth, while TOD tracts in the North city experienced some decline in population and the TOD tracts in the South city generally remained stable.
+```{r}
 new_CTAstops <- CTA_stops
 new_CTAstops <- st_join(CTA_stops, allTracts.group, join = st_intersects) %>%
   na.omit()
 
-#population Graduated Symbol Map
 ggplot()+
   geom_sf(data = allTracts,
           fill = "antiquewhite1", color = "grey75")+
@@ -329,9 +347,10 @@ ggplot()+
   facet_wrap(~year)+
   mapTheme()+
   guides(size = guide_legend(override.aes = list(fill = palette5)))
+```
 
-
-#Rent Graduated Symbol Map
+The graduated symbol map of median rent shows the change of median rent in census tracts within 1/2 mile of transit stations between 2000 and 2017. All TOD tracts experienced an increase in of median rent.
+```{r}
 ggplot()+
   geom_sf(data = allTracts,
           fill = "antiquewhite1", color = "grey75")+
@@ -355,94 +374,12 @@ ggplot()+
   facet_wrap(~year)+
   mapTheme()+
   guides(size = guide_legend(override.aes = list(fill = palette5)))
+```
 
-#Rent and Distance to Subway Station
+## Multiple Ring Buffer
 
-multipleRingBuffer <- function(inputPolygon, maxDistance, interval) 
-  {
-    #create a list of distances that we'll iterate through to create each ring
-    distances <- seq(0, maxDistance, interval)
-    #we'll start with the second value in that list - the first is '0'
-    distancesCounter <- 2
-    #total number of rings we're going to create
-    numberOfRings <- floor(maxDistance / interval)
-    #a counter of number of rings
-    numberOfRingsCounter <- 1
-    #initialize an otuput data frame (that is not an sf)
-    allRings <- data.frame()
-    
-    #while number of rings  counteris less than the specified nubmer of rings
-    while (numberOfRingsCounter <= numberOfRings) 
-    {
-      #if we're interested in a negative buffer and this is the first buffer
-      #(ie. not distance = '0' in the distances list)
-      if(distances[distancesCounter] < 0 & distancesCounter == 2)
-      {
-        #buffer the input by the first distance
-        buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
-        #different that buffer from the input polygon to get the first ring
-        buffer1_ <- st_difference(inputPolygon, buffer1)
-        #cast this sf as a polygon geometry type
-        thisRing <- st_cast(buffer1_, "POLYGON")
-        #take the last column which is 'geometry'
-        thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
-        #add a new field, 'distance' so we know how far the distance is for a give ring
-        thisRing$distance <- distances[distancesCounter]
-      }
-      
-      
-      #otherwise, if this is the second or more ring (and a negative buffer)
-      else if(distances[distancesCounter] < 0 & distancesCounter > 2) 
-      {
-        #buffer by a specific distance
-        buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
-        #create the next smallest buffer
-        buffer2 <- st_buffer(inputPolygon, distances[distancesCounter-1])
-        #This can then be used to difference out a buffer running from 660 to 1320
-        #This works because differencing 1320ft by 660ft = a buffer between 660 & 1320.
-        #bc the area after 660ft in buffer2 = NA.
-        thisRing <- st_difference(buffer2,buffer1)
-        #cast as apolygon
-        thisRing <- st_cast(thisRing, "POLYGON")
-        #get the last field
-        thisRing <- as.data.frame(thisRing$geometry)
-        #create the distance field
-        thisRing$distance <- distances[distancesCounter]
-      }
-      
-      #Otherwise, if its a positive buffer
-      else 
-      {
-        #Create a positive buffer
-        buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
-        #create a positive buffer that is one distance smaller. So if its the first buffer
-        #distance, buffer1_ will = 0. 
-        buffer1_ <- st_buffer(inputPolygon, distances[distancesCounter-1])
-        #difference the two buffers
-        thisRing <- st_difference(buffer1,buffer1_)
-        #cast as a polygon
-        thisRing <- st_cast(thisRing, "POLYGON")
-        #geometry column as a data frame
-        thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
-        #add teh distance
-        thisRing$distance <- distances[distancesCounter]
-      }  
-      
-      #rbind this ring to the rest of the rings
-      allRings <- rbind(allRings, thisRing)
-      #iterate the distance counter
-      distancesCounter <- distancesCounter + 1
-      #iterate the number of rings counter
-      numberOfRingsCounter <- numberOfRingsCounter + 1
-    }
-    
-    #convert the allRings data frame to an sf data frame
-    allRings <- st_as_sf(allRings)
-  }
-
-  
-multipleRingBufferZone <- multipleRingBuffer(buffer, 15000, 800)
-
+The line plot below demonstrates the median rent as a function of distance to transit stations. In 2017, rent decreased as houses were further away from transit stations, supporting that TOD would increase rent. The rent then increase when the distance is larger than 4 miles might due to suburbs that are remote from transit yet have high property value.
+```{r}
 allTracts.rings <-
   st_join(st_centroid(dplyr::select(allTracts, GEOID, year)), 
           multipleRingBuffer(buffer, 15000, 800)) %>%
@@ -464,9 +401,14 @@ ggplot(data=Summary_allTracts.rings,aes(x=distance,y=Rent,color=year))+
   xlab("Miles")+
   ylab("Average rent")
 
+```
 
-#Crime Data
-library(crimedata)
+
+## Crime Data
+
+Because we are unable to get 2000 crime data, we use 2009 crime data instead for 2009 is the earliest year with crime data that we can access.
+
+```{r}
 crime_2009 <- get_crime_data(
   years = 2009, 
   cities = c("Chicago"), 
@@ -484,7 +426,6 @@ crime_2017 <- get_crime_data(
 crime0917 <- rbind(crime_2009,crime_2017)%>%
   st_as_sf(coords = c("longitude","latitude"), crs=st_crs(4326),agr="constant") %>%
   st_transform(st_crs(allTracts.group))
-
 tracts_crime <- st_join(allTracts.group, crime0917, join = st_intersects) 
 crime_count <- count(as_tibble(tracts_crime), GEOID)
 tracts_crimecount <- left_join(crime_count, tracts_crime) %>%
@@ -494,7 +435,13 @@ tracts_crimecount <- left_join(crime_count, tracts_crime) %>%
 tracts_crimecount <- tracts_crimecount %>%
   dplyr::select(-offense_type, -offense_group, -offense_against, -date_single,
                 -location_type, -location_category)
-#Crime Map
+```
+
+## Crime Map
+
+The Crime Count map shows counts of property crimes for census tracts. We focus on property crimes because an important component and results of TOD is property development. TOD tracts have slightly less property crimes compared with Non-TOD tracts nearby.
+
+```{r}
 ggplot(tracts_crimecount[CTA_boundary,])+
   geom_sf(data = tracts17, fill = "antiquewhite1", color = "grey75")+
   geom_sf(aes(fill = q5(Crimecount))) +
@@ -506,8 +453,12 @@ ggplot(tracts_crimecount[CTA_boundary,])+
   facet_wrap(~year)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
+```
 
-#Crime Plot
+## Crime and TOD Indicators
+
+The table and the plot below show the average property crime cases and TOD indicators. Interestingly, while TOD tracts continue to have less crime cases, the average number of crime cases for TOD tracts increased while the one for Non-TOD tracts decreased. The gap between TOD and Non-TOD tracts narrowed.
+```{r}
 tracts_crime.summary <- 
   st_drop_geometry(tracts_crimecount) %>%
   group_by(year, TOD) %>%
@@ -536,3 +487,10 @@ tracts_crime.summary %>%
   scale_fill_manual(values = c("#bae4bc", "#0868ac")) +
   labs(title = "Indicator differences across time and space") +
   plotTheme() + theme(legend.position="bottom")
+```
+
+## Conclusion
+
+In general, TOD tracts are associated with the growth in rent, the increase of white population and highly-educated population, more decrease in poverty, less loss of general population, and more safety. People in Chicago are likely to pay more to live close to transit.
+
+However, the analysis above also shows that Chicago is divided up into the North and the South, two parts of the city that share trends on different scales or even different trends in specific TOD indicators such as poverty and crime. Thus, TOD in Chicago requires more contextualized analysis and decision-making. While TOD is likely to succeed in Chicago, the city should consider carefully which part of the city is more suitable for TOD.
