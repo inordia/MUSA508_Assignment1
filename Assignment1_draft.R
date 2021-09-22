@@ -93,7 +93,7 @@ tracts00<- tracts00%>%spread(variable, value)%>%
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop), 0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
          year = "2000") %>%
-  dplyr::select(-Whites,-FemaleBachelors,-MaleBachelors,-TotalPoverty)
+  dplyr::select(-Whites,-FemaleBachelors,-MaleBachelors,-TotalPoverty,-NAME)
 View(tracts00)
 
 #Clip the boundary 
@@ -143,13 +143,13 @@ dim(allTracts)
 View(allTracts)
 
 #Transit Data
-tractsboundary <-st_union(tracts17)
+
 
 CTA_stops <- st_read("https://data.cityofchicago.org/download/4qtv-9w43/application%2Fxml") %>%
   select(-Description)%>%
   st_transform('EPSG:26916')
 
-CTA_stops<- CTA_stops[tractsboundary,]
+CTA_stops<- CTA_stops[CTA_boundary_buffer,]
 
 plot(CTA_stops)
 
@@ -300,49 +300,237 @@ Downtown <- subset(allTracts.group, allTracts$GEOID==Loop)%>%
   mutate(submarket = "downtown")
 
 #Graduated Symbol Maps
+
+new_CTAstops <- CTA_stops
+new_CTAstops <- st_join(CTA_stops, allTracts.group, join = st_intersects) %>%
+  na.omit()
+
+#population Graduated Symbol Map
 ggplot()+
-  geom_sf(data = tracts17,
-          fill = "white", color = "grey75")+
-  geom_sf(data = tracts17%>%
-            st_centroid(),
-          shape = 21, color='grey10',
+  geom_sf(data = allTracts,
+          fill = "antiquewhite1", color = "grey75")+
+  geom_sf(data = new_CTAstops %>%
+            st_centroid(), 
+          shape = 21,
           aes(
             size = TotalPop,
             fill = TotalPop
-          )) +
+          ),alpha = 1, show.legend = "point") +
   scale_size_continuous(
-    range = c(0,5),
-    breaks = c(0,2002,3050,4536,18841), 
-    labels = qBr(tracts17, "TotalPop"),
-    name="Total Population"
-  ) +
-  scale_fill_stepsn(	
+    range = c(1,6),
+    breaks = c(0, 1644, 2934, 5172, 18841),
+    labels = qBr(new_CTAstops, "TotalPop"),
+    name = "Total Population")+
+  scale_fill_stepsn(
     colors = palette5,
-    breaks = c(0,2002,3050,4536,18841),
-    guide = FALSE
-  )+
-  labs(title = "Total Population") +
-  theme(axis.title=element_blank(),
-        axis.text=element_blank(), axis.ticks=element_blank(), # remove ticks
-        panel.background = element_rect(fill='gray'))+
-  guides(
-    size = guide_legend(
-      override.aes = list(fill = palette5)
-    ))
+    breaks = c(0, 1644, 2934, 5172, 18841),
+    guide = FALSE)+
+  labs(title = "Graduated Symbol Map of Population", subtitle = "within 1/2 mi of stations\n 2000-2017") +
+  facet_wrap(~year)+
+  mapTheme()+
+  guides(size = guide_legend(override.aes = list(fill = palette5)))
+
+
+#Rent Graduated Symbol Map
+ggplot()+
+  geom_sf(data = allTracts,
+          fill = "antiquewhite1", color = "grey75")+
+  geom_sf(data = new_CTAstops %>%
+            st_centroid(), 
+          shape = 21,
+          aes(
+            size = MedRent,
+            fill = MedRent
+          ),alpha = 1, show.legend = "point") +
+  scale_size_continuous(
+    range = c(1,6),
+    breaks = c(0, 680, 864, 1406, 2261),
+    labels = qBr(new_CTAstops, "MedRent"),
+    name = "Median Rent")+
+  scale_fill_stepsn(
+    colors = palette5,
+    breaks = c(0, 680, 864, 1406, 2261),
+    guide = FALSE)+
+  labs(title = "Graduated Symbol Map of Median Rent", subtitle = "within 1/2 mi of stations\n 2000-2017") +
+  facet_wrap(~year)+
+  mapTheme()+
+  guides(size = guide_legend(override.aes = list(fill = palette5)))
 
 #Rent and Distance to Subway Station
 
 multipleRingBuffer <- function(inputPolygon, maxDistance, interval) 
+  {
+    #create a list of distances that we'll iterate through to create each ring
+    distances <- seq(0, maxDistance, interval)
+    #we'll start with the second value in that list - the first is '0'
+    distancesCounter <- 2
+    #total number of rings we're going to create
+    numberOfRings <- floor(maxDistance / interval)
+    #a counter of number of rings
+    numberOfRingsCounter <- 1
+    #initialize an otuput data frame (that is not an sf)
+    allRings <- data.frame()
+    
+    #while number of rings  counteris less than the specified nubmer of rings
+    while (numberOfRingsCounter <= numberOfRings) 
+    {
+      #if we're interested in a negative buffer and this is the first buffer
+      #(ie. not distance = '0' in the distances list)
+      if(distances[distancesCounter] < 0 & distancesCounter == 2)
+      {
+        #buffer the input by the first distance
+        buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+        #different that buffer from the input polygon to get the first ring
+        buffer1_ <- st_difference(inputPolygon, buffer1)
+        #cast this sf as a polygon geometry type
+        thisRing <- st_cast(buffer1_, "POLYGON")
+        #take the last column which is 'geometry'
+        thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
+        #add a new field, 'distance' so we know how far the distance is for a give ring
+        thisRing$distance <- distances[distancesCounter]
+      }
+      
+      
+      #otherwise, if this is the second or more ring (and a negative buffer)
+      else if(distances[distancesCounter] < 0 & distancesCounter > 2) 
+      {
+        #buffer by a specific distance
+        buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+        #create the next smallest buffer
+        buffer2 <- st_buffer(inputPolygon, distances[distancesCounter-1])
+        #This can then be used to difference out a buffer running from 660 to 1320
+        #This works because differencing 1320ft by 660ft = a buffer between 660 & 1320.
+        #bc the area after 660ft in buffer2 = NA.
+        thisRing <- st_difference(buffer2,buffer1)
+        #cast as apolygon
+        thisRing <- st_cast(thisRing, "POLYGON")
+        #get the last field
+        thisRing <- as.data.frame(thisRing$geometry)
+        #create the distance field
+        thisRing$distance <- distances[distancesCounter]
+      }
+      
+      #Otherwise, if its a positive buffer
+      else 
+      {
+        #Create a positive buffer
+        buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+        #create a positive buffer that is one distance smaller. So if its the first buffer
+        #distance, buffer1_ will = 0. 
+        buffer1_ <- st_buffer(inputPolygon, distances[distancesCounter-1])
+        #difference the two buffers
+        thisRing <- st_difference(buffer1,buffer1_)
+        #cast as a polygon
+        thisRing <- st_cast(thisRing, "POLYGON")
+        #geometry column as a data frame
+        thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
+        #add teh distance
+        thisRing$distance <- distances[distancesCounter]
+      }  
+      
+      #rbind this ring to the rest of the rings
+      allRings <- rbind(allRings, thisRing)
+      #iterate the distance counter
+      distancesCounter <- distancesCounter + 1
+      #iterate the number of rings counter
+      numberOfRingsCounter <- numberOfRingsCounter + 1
+    }
+    
+    #convert the allRings data frame to an sf data frame
+    allRings <- st_as_sf(allRings)
+  }
 
+  
 allTracts.rings <-
   st_join(st_centroid(dplyr::select(allTracts, GEOID, year)), 
-          multipleRingBuffer(buffer, 15000, 2640)) %>%
+          multipleRingBuffer(buffer, 8000, 800)) %>%
   st_drop_geometry() %>%
   left_join(dplyr::select(allTracts, GEOID, MedRent, year), 
             by=c("GEOID"="GEOID", "year"="year")) %>%
   st_sf() %>%
-  mutate(distance = distance*0.00062)
+  na.omit()%>%
+  mutate(distance = distance /1609.34)
+
+Summary_allTracts.rings <-
+  st_drop_geometry(allTracts.rings) %>%
+  group_by(year, distance) %>%
+  summarize(Rent = mean(MedRent, na.rm = T))
+
+ggplot(data=Summary_allTracts.rings,aes(x=distance,y=Rent,color=year))+
+  geom_line(size=2)+
+  labs(title = "Rent as a function of distance to subway stations",subtitle = "Census tracts")+
+  xlab("Miles")+
+  ylab("Average rent")
+
 
 #Crime Data
-cime <- st_read("https://data.cityofchicago.org/api/views/d62x-nvdr/rows.xml?accessType=DOWNLOAD")
+library(crimedata)
+crime_2009 <- get_crime_data(
+  years = 2009, 
+  cities = c("Chicago"), 
+  type = "core"
+) %>%
+  filter(offense_type == "destruction/damage/vandalism of property (except arson)")
 
+crime_2017 <- get_crime_data(
+  years = 2017, 
+  cities = c("Chicago"), 
+  type = "core"
+) %>%
+  filter(offense_type == "destruction/damage/vandalism of property (except arson)")
+
+crime0917 <- rbind(crime_2009,crime_2017)%>%
+  st_as_sf(coords = c("longitude","latitude"), crs=st_crs(4326),agr="constant") %>%
+  st_transform(st_crs(allTracts.group))
+
+tracts_crime <- st_join(allTracts.group, crime0917, join = st_intersects) 
+crime_count <- count(as_tibble(tracts_crime), GEOID)
+tracts_crimecount <- left_join(crime_count, tracts_crime) %>%
+  rename("Crimecount" = n) %>%
+  st_as_sf()
+
+tracts_crimecount <- tracts_crimecount %>%
+  dplyr::select(-offense_type, -offense_group, -offense_against, -date_single,
+                -location_type, -location_category)
+#Crime Map
+ggplot(tracts_crimecount[CTA_boundary,])+
+  geom_sf(data = tracts17, fill = "antiquewhite1", color = "grey75")+
+  geom_sf(aes(fill = q5(Crimecount))) +
+  geom_sf(data = buffer, fill = "transparent", color = "red") +
+  scale_fill_manual(values = palette5,
+                    labels = qBr(tracts_crimecount, "Crimecount"),
+                    name = "Crime count\n(Quintile Breaks)") +
+  labs(title = "Crime count 2009-2017", subtitle = "The red border denotes areas close to rail stations") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+
+#Crime Plot
+tracts_crime.summary <- 
+  st_drop_geometry(tracts_crimecount) %>%
+  group_by(year, TOD) %>%
+  summarize(Rent = mean(MedRent, na.rm = T),
+            Population = mean(TotalPop, na.rm = T),
+            Percent_White = mean(pctWhite, na.rm = T),
+            Percent_Bach = mean(pctBachelors, na.rm = T),
+            Percent_Poverty = mean(pctPoverty, na.rm = T),
+            Crime = mean(Crimecount, na.rm = T))
+
+tracts_crime.summary %>%
+  unite(year.TOD, year, TOD, sep = ": ", remove = T)%>%
+  gather(Variable, Value, -year.TOD) %>%
+  mutate(Value = round(Value, 2)) %>%
+  spread(year.TOD, Value)%>%
+  kable() %>%
+  kable_styling() %>%
+  footnote(general_title = "TOD Inditators and Crime, Chicago",
+           general = "\n")
+
+tracts_crime.summary %>%
+  gather(Variable, Value, -year, -TOD) %>%
+  ggplot(aes(year, Value, fill = TOD)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Variable, scales = "free", ncol=5) +
+  scale_fill_manual(values = c("#bae4bc", "#0868ac")) +
+  labs(title = "Indicator differences across time and space") +
+  plotTheme() + theme(legend.position="bottom")
