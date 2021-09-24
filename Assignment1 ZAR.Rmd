@@ -138,7 +138,7 @@ tracts17<-
 allTracts <- rbind(tracts00,tracts17)
 ```
 
-##1.2 Wrangling transit open data, relating tracts and rail stations in space 
+## 1.2 Wrangling transit open data, relating tracts and rail stations in space
 We Wrangled transit open data, creating 1/2 mile buffer zone around each station and relating tracts with stations.
 
 ```{r}
@@ -251,7 +251,7 @@ ggplot(allTracts.group)+
   mapTheme() + theme(plot.title = element_text(size=22))
 ```
 
-##2.2 TOD Indicator Table
+## 2.2 TOD Indicator Table
 
 ```{r}
 allTracts.Summary <- 
@@ -272,7 +272,7 @@ allTracts.Summary %>%
   footnote(general_title = "TOD Inditators, Chicago",
            general = "Table 1. TOD indicator averages")
 ```
-##2.3 TOD Indicator Plots
+## 2.3 TOD Indicator Plots
 
 Table 1 shows the average of TOD indicators for TOD and Non-TOD tracts in 2000 and 2017, while Figure 6 visualizes the group differences. Chicago was more educated and less impoverished, as the rent increased significantly from 2000 to 2017. Despite the increasing rent, more people prefer living in TOD area, especially for those with bachelor degree.
 
@@ -287,8 +287,8 @@ allTracts.Summary %>%
   plotTheme() + theme(legend.position="bottom")
 ```
 
-#3. Graduted Symbol Maps of population and rent within 0.5 mile of each transit station
-##3.1 Graduted Symbol Maps of population
+# 3. Graduted Symbol Maps of population and rent within 0.5 mile of each transit station
+## 3.1 Graduted Symbol Maps of population
 Figure 7 visualizes the population near the transit stations of 2000 and 2017. Population in center city grew significantly, while decreased in northern parts.
 ```{r}
 new_CTAstops <- CTA_stops
@@ -319,7 +319,7 @@ ggplot()+
   guides(size = guide_legend(override.aes = list(fill = palette5)))
 ```
 
-##3.2 Graduted Symbol Maps of median rent
+## 3.2 Graduted Symbol Maps of median rent
 Figure 8 visualizes the median rent near the transit stations of 2000 and 2017. The overall median rent of areas increased significantly near all the transit stops of Chicago. Following the rule of population changes, the median rent of center city grew sharply.
 ```{r}
 ggplot()+
@@ -347,7 +347,7 @@ ggplot()+
   guides(size = guide_legend(override.aes = list(fill = palette5)))
 ```
 
-#4. Mean rent as a function of distance to subway stations 
+# 4. Mean rent as a function of distance to subway stations 
 
 Figure 9 shows the median rent as a function of distance to transit stations. From 0.5 to 1.5 mile, the rent of 2017 decreased, while rent in 2000 increased. Overall, going further from TOD, the rent decreased. However, when the distance is greater than 4 miles away from the station, the rent increased.
 
@@ -454,8 +454,8 @@ ggplot(data=Summary_allTracts.rings,aes(x=distance,y=Rent,color=year))+
 ```
 
 
-#5. The relationship between crime, transit access, and rents
-##5.1 Download and wrangle point-level crime data
+# 5. The relationship between crime, transit access, and rents
+## 5.1 Download and wrangle point-level crime data
 Since the crime data of year 2000 too early to get published, instead of 2009 we choose crime data of the year 2009, the earliest year we can find crime data. We focus on the "destruction/damage/vandalism of property (except arson)", the property crime, of our crime data.
 
 ```{r}
@@ -484,7 +484,7 @@ tracts_crimecount <- tracts_crimecount %>%
                 -location_type, -location_category)
 ```
 
-##5.2 Crime Map
+## 5.2 Crime Map
 
 Figure 10 shows counts of property crimes for census tracts. We focus on property crimes because an important component and results of TOD is property development. The crime situation TOD area remained stable between 2009 and 2017. The northern Chicago is safer than the southern.
 
